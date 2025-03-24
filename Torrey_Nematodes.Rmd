@@ -425,6 +425,7 @@ pairwise_permanova <- function(sp_matrix, group_var, dist = "bray", adj = "fdr",
 ```
 
 ```{r apply pairwise function}
+factors <- DF_w.2[,(1:3)] # I create a factor df
 ## Run pairwise permanova
 groups <- as.character(factors$Station) # Apparently, my function doesn't like factors
 pairwise_permanova(DG_w.3, groups)
