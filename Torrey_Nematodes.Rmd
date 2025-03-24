@@ -1,0 +1,541 @@
+---
+title: "Torrey_2023"
+author: "PasottiF"
+date: "2025"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+require("knitr")
+knitr::opts_knit$set(root.dir = "/Volumes/SSD_1Tb_PF/Work/torrey")
+knitr::opts_chunk$set(
+	message = FALSE,
+	warning = FALSE,
+	include = FALSE
+)
+```
+
+## Analyses
+
+
+```{r echo=FALSE, load libraries }
+library(UpSetR)
+library(grid)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(vegan)
+library(data.table)
+library(writexl)
+library(ggpubr)
+library(reshape2)
+```
+
+```{r echo=FALSE, read data }
+# remove previously loaded items from the current environment and remove previous graphics.
+rm(list=ls())
+graphics.off()
+# Here, I set the seed each time so that the results are comparable. 
+# This is useful as it means that anyone that runs your code, *should*
+# get the same results as you, although random number generators change 
+# from time to time.
+set.seed(1)
+#read the data
+Nema <- read.table("Nematoda_Gorra_2024_2.txt", header=T, sep = ",")
+Nema <- Nema[,-18]
+```
+
+```{r echo=FALSE, prepare data Genus analysis }
+#create a long format dataset with pivot_long fit for Permanova analyses
+#Genus subset
+ Nema_Genus_Long <- Nema[, -1] %>%
+  pivot_longer(!Genus, names_to = "Station", values_to = "count")
+##this data is not yet ready for analysis like Permanova
+DG<- Nema_Genus_Long %>% 
+   group_by(Genus,Station) %>% 
+   dplyr::mutate(count = sum(count))
+#Now I need to sum up per replicate all the counts of each genus to generatr the heatmap and then also the UpsetR per station
+ DG.1 <- DG # first I create a copy df
+## I need to make sure that the station_ID is without the replicate detail
+ DG.1$Station <- gsub(".1", "", as.character(DG.1$Station), fixed=TRUE)
+ DG.1$Station <- gsub(".2", "", as.character(DG.1$Station), fixed=TRUE)
+ DG.1$Station <- gsub(".3", "", as.character(DG.1$Station), fixed=TRUE)
+##
+ DG.1$Station<-as.factor(DG.1$Station)
+  DG.1$Genus<-as.factor(DG.1$Genus)
+  #
+ DG.1 <- DG.1 %>% 
+   rowwise() %>%
+   group_by(Genus,Station) %>% 
+   dplyr::mutate(count = sum(count))
+ # I eliminate the duplicates
+ DG.1 <- DG.1[!duplicated(DG.1), ] # now this data frame DG.1 CANNOT be used for Pemanova analysis because it lacks the replicate factors
+ 
+ 
+####I continue now to prepare the df for the plots of UpsetR and Heatmap
+DG.2 <- DG.1
+# Now I pivot wide to have the presence absence later for UpsetR and Heatmap 
+DG.Heatmap <- DG.2 %>%
+  pivot_wider(names_from = Station, values_from = count)
+ # I create a presence absence 
+ DG.UpsetR <- DG.Heatmap
+DG.UpsetR[DG.UpsetR > 0] <- 1 # I make it in a presence/absence matrix for UpsetR plots
+```
+
+```{r UpsetR genus}
+
+## scale options for text to try out
+text_scale_options1 <- c(1, 1, 1, 1, 0.75, 1)
+text_scale_options2 <- c(1.3, 1.3, 1, 1, 1.25, 0.75) 
+text_scale_options3 <- c(1.5, 1.25, 1.25, 1, 2, 1.5)
+#setting colors
+#this can also be done with hexadecimal
+main_bar_col <- c("violetred4")
+sets_bar_col <- c("turquoise4")
+matrix_col <- c("slateblue4")
+shade_col <- c("wheat4")
+# make sure the dataframe is a df
+DG.UpsetR<-as.data.frame(DG.UpsetR)
+pdf("Genus_UpsetR.pdf",width=7,height=6,paper='special',onefile=FALSE)
+upset(DG.UpsetR,nsets=5,sets=c("BB_01","BB_02","FPS_01", "IS_01", "IS_02"),
+     #keep.order=TRUE,
+      	order.by="freq",
+      mainbar.y.label="shared genera",
+      sets.x.label="genera per station",
+      mb.ratio=c(0.55,0.45),
+      text.scale=text_scale_options2 ,
+	main.bar.color = main_bar_col,
+	sets.bar.color = sets_bar_col,
+	matrix.color = matrix_col,
+	shade.color = shade_col,
+	show.numbers = TRUE,
+	point.size = 2, 
+	line.size = 1)
+dev.off()
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r heatmap genus}
+#install.packages("gplots")
+library("gplots")
+#install.packages("pheatmap")
+library("pheatmap")
+df <- DG.Heatmap |>
+  tibble::column_to_rownames(var = "Genus") |>
+  as.matrix() 
+str(df)
+df <-scale(df)
+pdf("Genus_Heatmap.pdf",width=7,height=9,paper='special',onefile=TRUE)
+heatmap.2(df,scale = "none", col = bluered(100), 
+          trace = "none", density.info = "none",row_names_max_width = unit(16, "cm"))
+dev.off()
+knitr::opts_chunk$set(echo = TRUE)
+
+my_sample_col <- data.frame(sample = c("Bivalve bed", "FPS", "Impacted","Bivalve bed","Impacted"))
+row.names(my_sample_col) <- colnames(df)
+
+pdf("Genus_Heatmap.pdf",width=7,height=6,paper='special',onefile=TRUE)
+pheatmap(df, fontsize_row = 4,fontsize_col = 6,fontsize_number = 6, fontsize = 6,annotation_col = my_sample_col)
+dev.off()
+```
+
+
+
+```{r echo=FALSE, prepare data Family analysis }
+#create a long format dataset with pivot_long fit for Permanova analyses
+#Genus subset
+ Nema_Family_Long <- Nema[, -2] %>%
+  pivot_longer(!Family, names_to = "Station", values_to = "count")
+##this data is not yet ready for analysis like Permanova
+DF<- Nema_Family_Long %>% 
+   group_by(Family,Station) %>% 
+   dplyr::mutate(count = sum(count))
+#Now I need to sum up per replicate all the counts of each family
+ DF.1 <- DF %>% 
+   rowwise() %>%
+   group_by(Family,Station) %>% 
+   dplyr::mutate(count = sum(count))
+ 
+  # I eliminate the duplicates
+ DF.1 <- DF.1[!duplicated(DF.1), ] 
+# now this data frame DF.1 can be used for Pemanova analysis if you pivot it wide with the replicate as extra factor
+#I continue now to prepare the df for the plots of UpsetR and Heatmap
+ DF.2 <- DF.1
+## Make sure that the station_ID is without the replicate detail for the UpsetR and Heatmap plots
+ DF.2$Station <- gsub(".1", "", as.character(DF.2$Station), fixed=TRUE)
+ DF.2$Station <- gsub(".2", "", as.character(DF.2$Station), fixed=TRUE)
+ DF.2$Station <- gsub(".3", "", as.character(DF.2$Station), fixed=TRUE)
+##
+ DF.2$Station<-as.factor(DF.2$Station)
+  DF.2$Family<-as.factor(DF.2$Family)
+  #I need now to make sure that the replicates do not exist in the df
+ DF.2 <- DF.2 %>% 
+   rowwise() %>%
+   group_by(Family,Station) %>% 
+   dplyr::mutate(count = sum(count))
+ DF.2 <- DF.2[!duplicated(DF.2), ]# I eliminate the duplicates
+ 
+ # Now I pivot wide to have the presence absence later for UpsetR and Heatmap 
+ DF.Heatmap <- DF.2 %>%
+  pivot_wider(names_from = Station, values_from = count)
+ # I create a presence absence 
+ DF.UpsetR <- DF.Heatmap
+ #I create transform it into binary presence/absence
+DF.UpsetR[DF.UpsetR > 0] <- 1 # I make it in a presence/absence matrix for UpsetR plots
+```
+
+
+```{r UpsetR Family}
+
+## scale options for text to try out
+text_scale_options1 <- c(1, 1, 1, 1, 0.75, 1)
+text_scale_options2 <- c(1.3, 1.3, 1, 1, 1.25, 0.75) 
+text_scale_options3 <- c(1.5, 1.25, 1.25, 1, 2, 1.5)
+#setting colors
+#this can also be done with hexadecimal
+main_bar_col <- c("violetred4")
+sets_bar_col <- c("turquoise4")
+matrix_col <- c("slateblue4")
+shade_col <- c("wheat4")
+# make sure the dataframe is a df
+DF.UpsetR<-as.data.frame(DF.UpsetR)
+pdf("Family_UpsetR.pdf",width=7,height=6,paper='special',onefile=FALSE)
+upset(DF.UpsetR,nsets=5,sets=c("BB_01","BB_02","FPS_01", "IS_01", "IS_02"),
+     #keep.order=TRUE,
+      	order.by="freq",
+      mainbar.y.label="shared families",
+      sets.x.label="families per station",
+      mb.ratio=c(0.55,0.45),
+      text.scale=text_scale_options2,
+	main.bar.color = main_bar_col,
+	sets.bar.color = sets_bar_col,
+	matrix.color = matrix_col,
+	shade.color = shade_col,
+	show.numbers = FALSE,
+	point.size = 2, 
+	line.size = 1)
+dev.off()
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+```{r heatmap family}
+#install.packages("gplots")
+library("gplots")
+#install.packages("pheatmap")
+library("pheatmap")
+df <- DF.Heatmap |>
+  tibble::column_to_rownames(var = "Family") |>
+  as.matrix() 
+str(df)
+df <-scale(df)
+
+my_sample_col <- data.frame(sample = c("Bivalve bed", "FPS", "Impacted","Bivalve bed","Impacted"))
+row.names(my_sample_col) <- colnames(df)
+
+pdf("Family_Heatmap.pdf",width=7,height=6,paper='special',onefile=TRUE)
+pheatmap(df, fontsize_row = 4,fontsize_col = 6 ,fontsize_number = 6, fontsize = 6, annotation_col = my_sample_col)
+dev.off()
+```
+
+
+## Statistical Analyses
+
+```{r Permanova data prep Family, echo=FALSE}
+# I eliminate the duplicates
+ DF.3 <- DF[!duplicated(DF), ]
+DF_w <- pivot_wider(DF.3,names_from = `Family`, values_from = count)
+# I create a replicate column with mutate and case_when
+DF_w.2 <- DF_w %>%
+ mutate(
+    Replicate = case_when(
+      Station == "BB_01" ~ "R1",
+      Station == "BB_01.1" ~ "R2",
+      Station == "BB_01.2" ~ "R3",
+      Station == "BB_02" ~ "R1",
+      Station == "BB_02.1" ~ "R2",
+      Station == "BB_02.2" ~ "R3",
+       Station == "FPS_01" ~ "R1",
+      Station == "FPS_01.1" ~ "R2",
+      Station == "FPS_01.2" ~ "R3",
+       Station == "IS_01" ~ "R1",
+      Station == "IS_01.1" ~ "R2",
+      Station == "IS_01.2" ~ "R3",
+      Station == "IS_02" ~ "R1",
+      Station == "IS_02.1" ~ "R2",
+      Station == "IS_02.2" ~ "R3"))
+#I bring the replicate to front
+DF_w.2 <- DF_w.2 %>%relocate(37)
+
+## Make sure that the station_ID is without the replicate detail for the UpsetR and Heatmap plots
+ DF_w.2$Station <- gsub(".1", "", as.character(DF_w.2$Station), fixed=TRUE)
+ DF_w.2$Station <- gsub(".2", "", as.character(DF_w.2$Station), fixed=TRUE)
+ DF_w.2$Station <- gsub(".3", "", as.character(DF_w.2$Station), fixed=TRUE) 
+##I make the station and replicate into factors
+ DF_w.2$Station <- as.factor(DF_w.2$Station)
+ DF_w.2$Replicate <- as.factor(DF_w.2$Replicate)
+ 
+#I generate one column with the factor habitat 
+DF_w.2 <- DF_w.2 %>%
+ mutate(
+    Habitat = case_when(
+      Station == "BB_01" ~ "Bivalve beds",
+      Station == "BB_02" ~ "Bivalve beds",
+       Station == "FPS_01" ~ "FPS",
+       Station == "IS_01" ~ "Impacted",
+       Station == "IS_02" ~ "Impacted"))
+DF_w.2 <- DF_w.2 %>%relocate(38) 
+# Now I can run the analyses
+head(DF_w.2[,-(1:3)])
+
+DF_w.3 <- sqrt(DF_w.2[,-(1:3)])
+
+```
+
+
+```{r Permanova data prep Genus, echo=FALSE}
+
+# I eliminate the duplicates
+DG.3 <- DG[!duplicated(DG), ]
+DG_w <- pivot_wider(DG.3,names_from = `Genus`, values_from = count)
+# I create a replicate column with mutate and case_when
+DG_w.2 <- DG_w %>%
+ mutate(
+    Replicate = case_when(
+      Station == "BB_01" ~ "R1",
+      Station == "BB_01.1" ~ "R2",
+      Station == "BB_01.2" ~ "R3",
+      Station == "BB_02" ~ "R1",
+      Station == "BB_02.1" ~ "R2",
+      Station == "BB_02.2" ~ "R3",
+       Station == "FPS_01" ~ "R1",
+      Station == "FPS_01.1" ~ "R2",
+      Station == "FPS_01.2" ~ "R3",
+       Station == "IS_01" ~ "R1",
+      Station == "IS_01.1" ~ "R2",
+      Station == "IS_01.2" ~ "R3",
+      Station == "IS_02" ~ "R1",
+      Station == "IS_02.1" ~ "R2",
+      Station == "IS_02.2" ~ "R3"))
+#I bring the replicate to front
+DG_w.2 <- DG_w.2 %>%relocate(109)
+
+## Make sure that the station_ID is without the replicate detail for the analysis by Station
+ DG_w.2$Station <- gsub(".1", "", as.character(DG_w.2$Station), fixed=TRUE)
+ DG_w.2$Station <- gsub(".2", "", as.character(DG_w.2$Station), fixed=TRUE)
+ DG_w.2$Station <- gsub(".3", "", as.character(DG_w.2$Station), fixed=TRUE) 
+##I make the station and replicate into factors
+ DG_w.2$Station <- as.factor(DG_w.2$Station)
+ DG_w.2$Replicate <- as.factor(DG_w.2$Replicate)
+ 
+#I generate one column with the factor habitat 
+DG_w.2 <- DG_w.2 %>%
+ mutate(
+    Habitat = case_when(
+      Station == "BB_01" ~ "Bivalve beds",
+      Station == "BB_02" ~ "Bivalve beds",
+       Station == "FPS_01" ~ "FPS",
+       Station == "IS_01" ~ "Impacted",
+       Station == "IS_02" ~ "Impacted"))
+DG_w.2 <- DG_w.2 %>%relocate(110) 
+# Now I can run the analyses
+head(DG_w.2[,-(1:3)])
+DG_w.3 <- sqrt(DG_w.2[,-(1:3)])
+```
+
+
+```{r Permanova analysis}
+library(vegan)
+#comparison between habitats
+simple.result.adonis2 <- adonis2(DG_w.3 ~ DG_w.2$Station, data = DG_w.3, method = "bray", na.rm=TRUE) #two
+### Pair-wise multivariate comparison
+##I check for the homogeneity of group's dispersions 
+dist <- vegdist(DG_w.3, method="bray")#I prepare a distance matrix with distance from centroids
+b <- betadisper(dist, DG_w.2$Station, type = c("centroid"))#I run a permdisp and save it 
+anova(b) ##It seems that it is not significant so the dispersions are homogeneous and we can confirm the differences from the Permanova at the Genus level
+permutest(b, pairwise = TRUE, permutations = 9999) # again I compare the dispersion of the variances in a pair-wise fashion and it confirms there is not significant differences in the Genus level
+```
+
+```{r I create the pairwise function}
+#' Run pairwise comparisons by a grouping variable using `vegan::adonis`
+#'
+#' @param sp_matrix Community data matrix with columns for each species and rows for each site / observation
+#' @param group_var Vector of categorical variable of length equal to the number of rows in sp_matrix.
+#' @param dist dissimilarity index. See `vegan::vegdist` for options. Defaults to "bray"
+#' @param adj P-value adjustment. Defaults to "fdr". See `stats::p.adjust` for options.
+#' @param perm Number of permutations per model. Defaults to 10,000.
+#'
+#' @return A list with data frame containing contrasts and other elements for p-value adjustment and permutations.
+#' @export
+#'
+#' @examples
+#' 
+#' library("vegan")
+#' 
+#' # Load species matrix and covariates
+#' data("dune", package = "vegan")
+#' data("dune.env", package = "vegan")
+#' 
+#' # pairwise comparisons among land use categories
+#' pairwise_permanova(dune, dune.env$Use)
+pairwise_permanova <- function(sp_matrix, group_var, dist = "bray", adj = "fdr", perm = 10000) {
+  
+  require(vegan)
+  
+  ## list contrasts
+  group_var <- as.character(group_var)
+  groups <- as.data.frame(t(combn(unique(group_var), m = 2)))
+  
+  contrasts <- data.frame(
+    group1 = groups$V1, group2 = groups$V2,
+    R2 = NA, F_value = NA, df1 = NA, df2 = NA, p_value = NA
+  )
+  
+  for (i in seq(nrow(contrasts))) {
+    sp_subset <- group_var == contrasts$group1[i] | group_var == contrasts$group2[i] 
+    contrast_matrix <- sp_matrix[sp_subset,]
+    
+    ## fit contrast using adonis
+    fit <- vegan::adonis2(
+      contrast_matrix ~ group_var[sp_subset],
+      method = dist, 
+      perm = perm
+    )
+    
+    contrasts$R2[i] <- round(fit$R2[1], digits = 3)
+    contrasts$F_value[i] <- round(fit[["F"]][1], digits = 3)
+    contrasts$df1[i] <- fit$Df[1]
+    contrasts$df2[i] <- fit$Df[2]
+    contrasts$p_value[i] <- fit$`Pr(>F)`[1]
+  }
+  
+  ## adjust p-values for multiple comparisons
+  contrasts$p_value <- round(p.adjust(contrasts$p_value, method = adj), digits = 3)
+  
+  return(list(
+    contrasts = contrasts, 
+    "p-value adjustment" = adj, 
+    permutations = perm
+  ))
+}
+```
+
+```{r apply pairwise function}
+## Run pairwise permanova
+groups <- as.character(factors$Station) # Apparently, my function doesn't like factors
+pairwise_permanova(DG_w.3, groups)
+
+
+```
+
+
+```{r Anosim}
+library(vegan)
+anosim(DF_w.3, DF_w.2$Station, permutations = 9999, distance = "bray", strata = NULL)
+```
+
+
+```{r SIMPER}
+library(vegan)
+sim <-simper(dist, DG_w.2$Habitat, permutations = 999, trace = FALSE)
+## S3 method for class 'simper'
+sum<-summary(sim, ordered = TRUE,
+    digits = max(3,getOption("digits")))
+```
+
+
+
+
+##### some extra visualisation of Nematode genera and families #######
+```{r ggplot data nematoda , echo=FALSE}
+
+## stacked barplot can help visualise the diversity even when not significantly different and support other indices such as the 
+#diversity indices or the maturity index 
+library(dplyr)
+library(ggplot2) 
+library(RColorBrewer)
+library(pals)
+
+cols = rainbow(110, s=.6, v=.9)[sample(1:110,110)]##I create a col palette with at least 110 colors to be enough for the GENUS diversity
+
+
+p <- ggplot(data=DF.2, aes(x=Station, y=count, fill = Family)) + 
+  geom_bar(stat = "identity", position="fill")+
+  theme(legend.position="right",legend.text = element_text(size = 10),text=element_text(size=21))+
+  guides(fill=guide_legend(ncol=4, byrow=TRUE))+
+ #scale_fill_manual(values=cols) # for genus level
+ scale_fill_manual(values=as.vector(polychrome(35)))# for Family
+  
+plot <-p + theme_classic() + 
+  theme(text = element_text(size=21))
+
+ggsave("plot.png",width = 70, height = 40, units = "cm")
+
+
+
+```
+
+##### nMDS ######
+```{r nMDS}
+## nMDS
+factors <- DF_w.2[,(1:3)] # I create a factor df
+comm <- DF_w.2[,-(1:3)] #I extract the community data
+comm.2 <- as.matrix(comm)
+metaMDS <- metaMDS(comm.2, distance="bray",try=100)## I prefer this type
+plot(metaMDS)## it gives a veyr messy plot, so we extract the necessary data to plot in ggplot2
+#extract NMDS scores (x and y coordinates) for sites from newer versions of vegan package
+data.scores = as.data.frame(scores( metaMDS)$sites)
+#add columns from your original data to your new NMDS coordinates data frame
+data.scores$Station = factors$Station
+data.scores$Habitat = factors$Habitat
+head(data.scores)
+ 
+head(data.scores)
+
+library(ggplot2)
+
+p <- ggplot(data.scores, aes(x = NMDS1, y = NMDS2)) + 
+  geom_point(size = 4, aes( shape = Station, colour = Habitat)) + 
+  theme(axis.text.y = element_text(colour = "black", size = 12, face = "bold"),
+        axis.text.x = element_text(colour = "black", face = "bold", size = 12), 
+        legend.text = element_text(size = 12, face ="bold", colour ="black"), 
+        legend.position = "right", axis.title.y = element_text(face = "bold", size = 14), 
+        axis.title.x = element_text(face = "bold", size = 14, colour = "black"), 
+        legend.title = element_text(size = 14, colour = "black", face = "bold"), 
+        panel.background = element_blank(), 
+        panel.border = element_rect(colour = "black", fill = NA, size = 1.2),
+        legend.key=element_blank()) + 
+  labs(x = "NMDS1", colour = "Habitat", y = "NMDS2", shape = "Station")  + 
+  scale_colour_manual(values = c('chartreuse3', 'coral', 'cornflowerblue')) 
+# draw dispersion ellipses around data points with standard error
+ordiellipse(metaMDS, factors$Habitat, display = "sites", kind = "se", conf=0.95,draw="polygon", border=c('chartreuse3', 'coral', 'cornflowerblue'), col=c('chartreuse3', 'coral', 'cornflowerblue') ,label = F)##draw="polygon" allows to color fill the ellipses
+
+plot(p)
+    
+ggsave("NMDS.jpg")
+
+stressplot(metaMDS) ##I draw the stress plot for the NMDS
+ggsave("stress.jpg")
+```
+
+
+```{r ANOSIM}
+## Following the NMDS I use Anosim to test for statistical differences
+ano = anosim(comm.2, factors$Habitat, distance = "bray", permutations = 9999)
+ano
+```
+
+
+###### Diversity indices analysis ###########
+
+
+
+
+
+######## Maturity index analysis  #############
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
