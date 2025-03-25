@@ -44,13 +44,13 @@ graphics.off()
 set.seed(1)
 #read the data
 Nema <- read.table("Nematoda_Gorra_2024_2.txt", header=T, sep = ",")
-Nema <- Nema[,-18]
+Nema <- Nema[,-20]
 ```
 
 ```{r echo=FALSE, prepare data Genus analysis }
 #create a long format dataset with pivot_long fit for Permanova analyses
 #Genus subset
- Nema_Genus_Long <- Nema[, -1] %>%
+ Nema_Genus_Long <- Nema[, c(-1,-3, -4)] %>%
   pivot_longer(!Genus, names_to = "Station", values_to = "count")
 ##this data is not yet ready for analysis like Permanova
 DG<- Nema_Genus_Long %>% 
@@ -148,7 +148,7 @@ dev.off()
 ```{r echo=FALSE, prepare data Family analysis }
 #create a long format dataset with pivot_long fit for Permanova analyses
 #Genus subset
- Nema_Family_Long <- Nema[, -2] %>%
+ Nema_Family_Long <- Nema[, -(2:4)] %>%
   pivot_longer(!Family, names_to = "Station", values_to = "count")
 ##this data is not yet ready for analysis like Permanova
 DF<- Nema_Family_Long %>% 
@@ -360,7 +360,7 @@ anova(b) ##It seems that it is not significant so the dispersions are homogeneou
 permutest(b, pairwise = TRUE, permutations = 9999) # again I compare the dispersion of the variances in a pair-wise fashion and it confirms there is not significant differences in the Genus level
 ```
 
-```{r I create the pairwise function}
+```{r I create the pairwise function for species abundance data}
 #' Run pairwise comparisons by a grouping variable using `vegan::adonis`
 #'
 #' @param sp_matrix Community data matrix with columns for each species and rows for each site / observation
@@ -448,11 +448,8 @@ sum<-summary(sim, ordered = TRUE,
     digits = max(3,getOption("digits")))
 ```
 
-
-
-
 ##### some extra visualisation of Nematode genera and families #######
-```{r ggplot data nematoda , echo=FALSE}
+```{r stacked barplot , echo=FALSE}
 
 ## stacked barplot can help visualise the diversity even when not significantly different and support other indices such as the 
 #diversity indices or the maturity index 
@@ -462,21 +459,20 @@ library(RColorBrewer)
 library(pals)
 
 cols = rainbow(110, s=.6, v=.9)[sample(1:110,110)]##I create a col palette with at least 110 colors to be enough for the GENUS diversity
+cols_2 = c('gray', 'coral', 'chartreuse3','cornflowerblue')
 
 
-p <- ggplot(data=DF.2, aes(x=Station, y=count, fill = Family)) + 
+p <- ggplot(data=FT.2, aes(x=Station, y=count, fill = Feeding_type)) + 
   geom_bar(stat = "identity", position="fill")+
   theme(legend.position="right",legend.text = element_text(size = 10),text=element_text(size=21))+
   guides(fill=guide_legend(ncol=4, byrow=TRUE))+
  #scale_fill_manual(values=cols) # for genus level
- scale_fill_manual(values=as.vector(polychrome(35)))# for Family
-  
+ #scale_fill_manual(values=as.vector(polychrome(35)))# for Family
+   scale_fill_manual(values= cols_2)
 plot <-p + theme_classic() + 
   theme(text = element_text(size=21))
 
 ggsave("plot.png",width = 70, height = 40, units = "cm")
-
-
 
 ```
 
@@ -534,9 +530,199 @@ ano
 ###### Diversity indices analysis ###########
 
 
+```{r Diversity index analysis}
+### I calculate Shannon Evenness also called Pilous's J
+library(vegan)
+library(dplyr)
+# first I prepare the data for both analyses
+DF_div <- DF_w.2[, -(2:3)] #I create a df with onyl the habitat and the species counts
+DG_div <- DG_w.2[, -(2:3)]#I create a df with onyl the habitat and the species counts
 
+#Family level analysis
+S<-specnumber(DF_div) #'taxon richness
+S
+H<-diversity(DF_div[,-1]) #Shannon-Wiener diversity
+H
+J<-H/log(S) #Pielou's evenness
+J
+ET_50<-rarefy(DF_div[,-1],50) #expected taxon richness for 50 ind
+ET_50
+
+div_fam<-data.frame(S,H,J,ET_50)
+div_fam$Habitat<- as.factor(c("Bivalve beds", "Bivalve beds", "Bivalve beds", "FPS","FPS","FPS","Impacted", "Impacted",     "Impacted","Bivalve beds","Bivalve beds","Bivalve beds","Impacted","Impacted","Impacted"))
+div_fam <- div_fam %>%relocate(5) 
+
+# Genus level analysis
+S<-specnumber(DG_div) #'taxon richness
+S
+H<-diversity(DG_div[,-1]) #Shannon-Wiener diversity
+H
+J<-H/log(S) #Pielou's evenness
+J
+ET_50<-rarefy(DG_div[,-1],50) #expected taxon richness for 50 ind
+ET_50
+
+div_gen<-data.frame(S,H,J,ET_50)
+div_gen$Habitat<- as.factor(c("Bivalve beds", "Bivalve beds", "Bivalve beds", "FPS","FPS","FPS","Impacted", "Impacted",     "Impacted","Bivalve beds","Bivalve beds","Bivalve beds","Impacted","Impacted","Impacted"))
+div_gen <- div_gen %>%relocate(5) 
+
+```
+
+```{r one-way permAnova on diversity indices}
+#### one-way permanova univariate diversity indices  genus #### 
+#adonis(div_gen[, -(1)] ~factors$Habitat, permutation = 9999, method='euclidean')#
+adonis(div_fam$S ~factors$Station, permutation = 9999, method='euclidean')# I do one index a time for clarity
+```
+
+
+```{r apply pairwise t test}
+pairwise.t.test(div_gen$ET_50, factors$Station, p.adj = "bonf")
+```
+
+###### Trophic guild analysis ###########
+
+```{r Feeding type}
+ FT_Long <- Nema[, c(-1, -2, -4)] %>%
+  pivot_longer(!Feeding_type, names_to = "Station", values_to = "count")
+FT_Long <-na.omit(FT_Long)
+##this data is not yet ready for analysis like Permanova
+FT<- FT_Long %>% 
+   group_by(Feeding_type,Station) %>% 
+   dplyr::mutate(count = sum(count))
+#Now I need to sum up per replicate all the counts of each family
+ FT.1 <- FT 
+# I eliminate the duplicates
+ FT.1 <- FT.1[!duplicated(FT.1), ] 
+
+  FT.2 <- FT.1
+## Make sure that the station_ID is without the replicate detail for the UpsetR and Heatmap plots
+ FT.2$Station <- gsub(".1", "", as.character(FT.2$Station), fixed=TRUE)
+ FT.2$Station <- gsub(".2", "", as.character(FT.2$Station), fixed=TRUE)
+ FT.2$Station <- gsub(".3", "", as.character(FT.2$Station), fixed=TRUE)
+##
+ FT.2$Station<-as.factor(FT.2$Station)
+  FT.2$Feeding_type<-as.factor(FT.2$Feeding_type)
+  #I need now to make sure that the replicates do not exist in the df
+ FT.2 <- FT.2 %>% 
+   rowwise() %>%
+   group_by(Feeding_type,Station) %>% 
+   dplyr::mutate(count = sum(count))
+ ##I create now the df for the stacked barplot
+ FT.2 <- FT.2[!duplicated(FT.2), ]# I eliminate the duplicates
+ FT.2<-na.omit(FT.2)
+ 
+ # for anova 
+ FT_w <- pivot_wider(FT.1,names_from = `Feeding_type`, values_from = count)
+ ##I eliminate the replicate detail 
+ FT_w$Station <- gsub(".1", "", as.character(FT_w$Station), fixed=TRUE)
+ FT_w$Station <- gsub(".2", "", as.character(FT_w$Station), fixed=TRUE)
+ FT_w$Station <- gsub(".3", "", as.character(FT_w$Station), fixed=TRUE)
+ 
+ #I generate one column with the factor habitat 
+FT_w.1 <- FT_w %>%
+ mutate(
+    Habitat = case_when(
+      Station == "BB_01" ~ "Bivalve beds",
+      Station == "BB_02" ~ "Bivalve beds",
+       Station == "FPS_01" ~ "FPS",
+       Station == "IS_01" ~ "Impacted",
+       Station == "IS_02" ~ "Impacted"))
+FT_w.1 <- FT_w.1 %>%relocate(6) 
+```
+
+```{r PermAnova of feeding type composition}
+
+##I use the raw count for the feeding type analysis
+adonis(FT_w.1[,-(1:2)] ~FT_w.1$Habitat, permutation = 9999, method='euclidean')# I do one index a time for clarity
+##I check for the homogeneity of group's dispersions 
+dist <- vegdist(FT_w.1[,-(1:2)], method="bray")#I prepare a distance matrix with distance from centroids
+b <- betadisper(dist, FT_w.1$Habitat, type = c("centroid"))#I run a permdisp and save it 
+anova(b) ##It seems that it is not significant so the dispersions are homogeneous and we can confirm the differences from the Permanova at the Genus level
+permutest(b, pairwise = TRUE, permutations = 9999) # again I compare the dispersion of the variances in a pair-wise fashion and it confirms there is not significant differences in the Genus level
+```
+
+
+```{r pair-wise comparison Feeding type}
+## Run pairwise permanova
+groups <- as.character(FT_w.1$Habitat) # Apparently, my function doesn't like factors
+pairwise_permanova.2(FT_w.1[,-(1:2)], groups)
+
+```
 
 
 ######## Maturity index analysis  #############
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+The Maturity index is calculated as the weighted mean of the individual taxon score
+MI = Sum i=1 to i=n (v(i) * f(i)) where v(i)= c-p score of the taxon i and f(i) = frequency of that taxon 
+
+```{r Maturity index calculation}
+ 
+```
+
+
+
+
+
+```{r I create the pairwise function for non abundance data}
+#' Run pairwise comparisons by a grouping variable using `vegan::adonis`
+#'
+#' @param sp_matrix Community data matrix with columns for each species and rows for each site / observation
+#' @param group_var Vector of categorical variable of length equal to the number of rows in sp_matrix.
+#' @param dist dissimilarity index. See `vegan::vegdist` for options. Defaults to "bray"
+#' @param adj P-value adjustment. Defaults to "fdr". See `stats::p.adjust` for options.
+#' @param perm Number of permutations per model. Defaults to 10,000.
+#'
+#' @return A list with data frame containing contrasts and other elements for p-value adjustment and permutations.
+#' @export
+#'
+#' @examples
+#' 
+#' library("vegan")
+#' 
+#' # Load species matrix and covariates
+#' data("dune", package = "vegan")
+#' data("dune.env", package = "vegan")
+#' 
+#' # pairwise comparisons among land use categories
+#' pairwise_permanova(dune, dune.env$Use)
+pairwise_permanova.2 <- function(matrix, group_var, dist = "euclidean", adj = "fdr", perm = 10000) {
+  
+  require(vegan)
+  
+  ## list contrasts
+  group_var <- as.character(group_var)
+  groups <- as.data.frame(t(combn(unique(group_var), m = 2)))
+  
+  contrasts <- data.frame(
+    group1 = groups$V1, group2 = groups$V2,
+    R2 = NA, F_value = NA, df1 = NA, df2 = NA, p_value = NA
+  )
+  
+  for (i in seq(nrow(contrasts))) {
+    subset <- group_var == contrasts$group1[i] | group_var == contrasts$group2[i] 
+    contrast_matrix <- matrix[subset,]
+    
+    ## fit contrast using adonis
+    fit <- vegan::adonis2(
+      contrast_matrix ~ group_var[subset],
+      method = dist, 
+      perm = perm
+    )
+    
+    contrasts$R2[i] <- round(fit$R2[1], digits = 3)
+    contrasts$F_value[i] <- round(fit[["F"]][1], digits = 3)
+    contrasts$df1[i] <- fit$Df[1]
+    contrasts$df2[i] <- fit$Df[2]
+    contrasts$p_value[i] <- fit$`Pr(>F)`[1]
+  }
+  
+  ## adjust p-values for multiple comparisons
+  contrasts$p_value <- round(p.adjust(contrasts$p_value, method = adj), digits = 3)
+  
+  return(list(
+    contrasts = contrasts, 
+    "p-value adjustment" = adj, 
+    permutations = perm
+  ))
+}
+```
