@@ -448,39 +448,39 @@ sum<-summary(sim, ordered = TRUE,
     digits = max(3,getOption("digits")))
 ```
 
-##### some extra visualisation of Nematode genera and families #######
+##### some extra visualisation of data #######
 ```{r stacked barplot , echo=FALSE}
 
-## stacked barplot can help visualise the diversity even when not significantly different and support other indices such as the 
-#diversity indices or the maturity index 
+## stacked barplot can help visualise the diversity even when not significantly different and support other indices such as the diversity indices or the maturity index etc.
 library(dplyr)
 library(ggplot2) 
 library(RColorBrewer)
 library(pals)
 
 cols = rainbow(110, s=.6, v=.9)[sample(1:110,110)]##I create a col palette with at least 110 colors to be enough for the GENUS diversity
-cols_2 = c('gray', 'coral', 'chartreuse3','cornflowerblue')
+cols = c( 'chartreuse3', 'coral','cornflowerblue')
+cols_2 = c('darkgray', 'purple', 'darkgreen','blue')
+
 
 
 p <- ggplot(data=c_p.3, aes(x=Station, y=count, fill = Strategy)) + 
   geom_bar(stat = "identity", position="fill")+
-  #theme(legend.position="right",legend.text = element_text(size = 10),text=element_text(size=21))+
-   theme(legend.position="bottom",legend.text = element_text(size = 20),text=element_text(size=21))+
-  guides(fill=guide_legend(ncol=2, byrow=TRUE))+
+  theme(legend.position="right",legend.text = element_text(size = 10),text=element_text(size=21))+
+  #theme(legend.position="bottom",legend.text = element_text(size = 20),text=element_text(size=21))+
+  #guides(fill=guide_legend(ncol=2, byrow=TRUE))+
  #scale_fill_manual(values=cols) # for genus level
  #scale_fill_manual(values=as.vector(polychrome(35)))# for Family
    scale_fill_manual(values= cols_2)
+ggsave("plot.png",width = 70, height = 40, units = "cm")
+
+print(p)
 
 
-plot <-p + theme_classic() 
-
-#plot1 <- plot + theme(text = element_text(size=25))# this if I want the legend in
-
-plot1 <- plot +   theme(legend.position = "none", text=element_text(size=25)) # this only if I want to then plot two plots together 
+plot <-p + theme_classic() +theme(text=element_text(size=25))
+print(plot)
 
 ggsave("plot.png",width = 70, height = 40, units = "cm")
 
-legend <- get_legend(p) # to have the legend for later
 
 ```
 
@@ -488,28 +488,33 @@ legend <- get_legend(p) # to have the legend for later
 library(ggplot2)
 ## I try to create a plot with MI values o top of the c-p values plot
 plot2 <- ggplot()+
-  geom_point(data=MI.2, aes(x = Station, y = MI, colour = factors$Habitat, shape= factors$Habitat),size=3 )+
+  geom_point(data=MI.2, aes(x = Station, y = MI, colour = Habitat),size=5)+
   theme_classic()+
- theme(axis.title.x = element_blank(), axis.text.x = element_blank()) +
-  theme(legend.position="right")+
-  theme(legend.position = "none")
+ theme(axis.title.x = element_blank(), axis.text.x = element_blank(),text=element_text(size=25)) +
+  theme(legend.position="right") + 
+  labs(fill = "Habitat")
+  #scale_fill_discrete(name = "Habitat",labels = c("Bivalve beds", "FPS", "Impacted"))
+
+  #theme(legend.position = "none")
  
 
 plot(plot2)
+ggsave("plot.png",width = 70, height = 40, units = "cm")
 
 ```
 
 
 ```{r merge two plots}
 library(ggpubr)
-plot3 <- ggarrange(plot2,plot1,legend,nrow=3,ncol=1)
+library(gridExtra)
+plot3 <- ggarrange(plot2,plot,nrow=2,ncol=1)
 
+#%>%
+#gridExtra::grid.arrange(get_legend(plot1), heights = unit(c(80, 5), "mm"))
+
+ggsave("plot3.jpg",width = 70, height = 40, units = "cm")
 print(plot3)
-
-ggsave("plot3.png",width = 70, height = 40, units = "cm")
 ```
-
-
 
 ##### nMDS ######
 ```{r nMDS}
@@ -692,16 +697,17 @@ MI = Sum i=1 to i=n (v(i) * f(i)) where v(i)= c-p score of the taxon i and f(i) 
 
 ```{r Maturity index data preparation}
 ##I prepare the data at the genus level for the calculation of the MI
-c_p <- Nema [, c(-1, -3)] #I first create a df that only has genus (col1) and c_p values (col2) and samples with counts (cols 3:17)
+c_p <- Nema [, c(-1, -3)] #I first create a df that only has genus (col1) and c_p values (col2) and samplesID headers with counts (cols 3:17)
 c_p <-na.omit(c_p)# I remove all NAs since I cannot calculate or ID properly
 library(dplyr)
-relative_abundance <- c_p[, 3:17] / colSums(c_p[, 3:17], na.rm = TRUE) # I calculate the relative abundance of the genera
+relative_abundance <- c_p[, 3:17] / colSums(c_p[, 3:17], na.rm = TRUE) # I calculate the relative abundance of the genera WITHIN each sample
 importance <- relative_abundance * c_p$c_p #I calculate the c-p importance of each genus by multiplying the genus c-p value per the relative abundance within each sample
 MI <- cbind(Genus = c_p$Genus, importance)# I now merge the calculations into one df
-MI <-colSums(MI[, 2:16])
+MI <-colSums(MI[, 2:16]) #I now sum the c-p importance across each sample (summing along one col)
 MI.2 <- as.data.frame(MI)## with this dataframe I can plot the MI values per station
-MI.names <-row.names(MI.2)
+MI.names <-row.names(MI.2)# I get the Station ID
 MI.2$Station <- row.names(MI.2)
+MI.2$Habitat <-factors$Habitat#I add the Habitat factor for plotting
 
 #### To plot the c-p values
 library(tidyr)
@@ -722,8 +728,10 @@ c_p.3 <- c_p.3 %>%
       c_p == "1" ~ "Extreme coloniser",
       c_p == "2" ~ "Coloniser",
        c_p == "3" ~ "Intermediate",
-       c_p == "4" ~ "Stress sensitive",
-     c_p == "5" ~ "Extreme persisters"))
+       c_p == "4" ~ "Stress sensitive"))#I lack completely the extreme persister class
+
+# Now I can try to have an average value per Station
+
 
 ```
 
