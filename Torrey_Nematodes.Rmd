@@ -462,19 +462,54 @@ cols = rainbow(110, s=.6, v=.9)[sample(1:110,110)]##I create a col palette with 
 cols_2 = c('gray', 'coral', 'chartreuse3','cornflowerblue')
 
 
-p <- ggplot(data=FT.2, aes(x=Station, y=count, fill = Feeding_type)) + 
+p <- ggplot(data=c_p.3, aes(x=Station, y=count, fill = Strategy)) + 
   geom_bar(stat = "identity", position="fill")+
-  theme(legend.position="right",legend.text = element_text(size = 10),text=element_text(size=21))+
-  guides(fill=guide_legend(ncol=4, byrow=TRUE))+
+  #theme(legend.position="right",legend.text = element_text(size = 10),text=element_text(size=21))+
+   theme(legend.position="bottom",legend.text = element_text(size = 20),text=element_text(size=21))+
+  guides(fill=guide_legend(ncol=2, byrow=TRUE))+
  #scale_fill_manual(values=cols) # for genus level
  #scale_fill_manual(values=as.vector(polychrome(35)))# for Family
    scale_fill_manual(values= cols_2)
-plot <-p + theme_classic() + 
-  theme(text = element_text(size=21))
+
+
+plot <-p + theme_classic() 
+
+#plot1 <- plot + theme(text = element_text(size=25))# this if I want the legend in
+
+plot1 <- plot +   theme(legend.position = "none", text=element_text(size=25)) # this only if I want to then plot two plots together 
 
 ggsave("plot.png",width = 70, height = 40, units = "cm")
 
+legend <- get_legend(p) # to have the legend for later
+
 ```
+
+```{r dot line for MI}
+library(ggplot2)
+## I try to create a plot with MI values o top of the c-p values plot
+plot2 <- ggplot()+
+  geom_point(data=MI.2, aes(x = Station, y = MI, colour = factors$Habitat, shape= factors$Habitat),size=3 )+
+  theme_classic()+
+ theme(axis.title.x = element_blank(), axis.text.x = element_blank()) +
+  theme(legend.position="right")+
+  theme(legend.position = "none")
+ 
+
+plot(plot2)
+
+```
+
+
+```{r merge two plots}
+library(ggpubr)
+plot3 <- ggarrange(plot2,plot1,legend,nrow=3,ncol=1)
+
+print(plot3)
+
+ggsave("plot3.png",width = 70, height = 40, units = "cm")
+```
+
+
 
 ##### nMDS ######
 ```{r nMDS}
@@ -581,7 +616,7 @@ pairwise.t.test(div_gen$ET_50, factors$Station, p.adj = "bonf")
 
 ###### Trophic guild analysis ###########
 
-```{r Feeding type}
+```{r Feeding type data preparation}
  FT_Long <- Nema[, c(-1, -2, -4)] %>%
   pivot_longer(!Feeding_type, names_to = "Station", values_to = "count")
 FT_Long <-na.omit(FT_Long)
@@ -655,8 +690,41 @@ pairwise_permanova.2(FT_w.1[,-(1:2)], groups)
 The Maturity index is calculated as the weighted mean of the individual taxon score
 MI = Sum i=1 to i=n (v(i) * f(i)) where v(i)= c-p score of the taxon i and f(i) = frequency of that taxon 
 
-```{r Maturity index calculation}
- 
+```{r Maturity index data preparation}
+##I prepare the data at the genus level for the calculation of the MI
+c_p <- Nema [, c(-1, -3)] #I first create a df that only has genus (col1) and c_p values (col2) and samples with counts (cols 3:17)
+c_p <-na.omit(c_p)# I remove all NAs since I cannot calculate or ID properly
+library(dplyr)
+relative_abundance <- c_p[, 3:17] / colSums(c_p[, 3:17], na.rm = TRUE) # I calculate the relative abundance of the genera
+importance <- relative_abundance * c_p$c_p #I calculate the c-p importance of each genus by multiplying the genus c-p value per the relative abundance within each sample
+MI <- cbind(Genus = c_p$Genus, importance)# I now merge the calculations into one df
+MI <-colSums(MI[, 2:16])
+MI.2 <- as.data.frame(MI)## with this dataframe I can plot the MI values per station
+MI.names <-row.names(MI.2)
+MI.2$Station <- row.names(MI.2)
+
+#### To plot the c-p values
+library(tidyr)
+c_p$c_p <-as.factor(c_p$c_p)
+c_p.2 <- c_p[, -1] %>%
+  pivot_longer(!c_p, names_to = "Station", values_to = "count")
+## I eliminate the doubles
+c_p.2 <- c_p.2[!duplicated(c_p.2), ] 
+## Now I need to cum the values of for each c-p value across each station
+c_p.3<- c_p.2 %>% 
+   group_by(c_p,Station) %>% 
+   dplyr::mutate(count = sum(count))
+## and get rid of duplicates
+c_p.3 <- c_p.3[!duplicated(c_p.3), ] ## this is ready to plot (15 samples x 4 c-p values = 60 obs)
+c_p.3 <- c_p.3 %>%
+ mutate(
+    Strategy = case_when(
+      c_p == "1" ~ "Extreme coloniser",
+      c_p == "2" ~ "Coloniser",
+       c_p == "3" ~ "Intermediate",
+       c_p == "4" ~ "Stress sensitive",
+     c_p == "5" ~ "Extreme persisters"))
+
 ```
 
 
